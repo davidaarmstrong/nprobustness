@@ -31,23 +31,33 @@ np_robust <- function(base_mod,
   type <- match.arg(type)
   base_args$model <- base_mod
   robust_args$model <- robust_mod
-  base_args$variables <- vbl
-  robust_args$variables <- vbl
   if(type == "fd"){
-    base_args$variables <- vbl
-    robust_args$variables <- vbl
+    if(!"variables" %in% names(base_args)){
+      base_args$variables <- vbl
+    }
+    if(!"variables" %in% names(robust_args)){
+      robust_args$variables <- vbl
+    }
     b_comps <- suppressWarnings(do.call(avg_comparisons, base_args))
     b_rob <- suppressWarnings(do.call(avg_comparisons, robust_args))
   }
   if(type == "slope"){
-    base_args$variables <- vbl
-    robust_args$variables <- vbl
+    if(!"variables" %in% names(base_args)){
+      base_args$variables <- vbl
+    }
+    if(!"variables" %in% names(robust_args)){
+      robust_args$variables <- vbl
+    }
     b_comps <- suppressWarnings(do.call(avg_slopes, base_args))
     b_rob <- suppressWarnings(do.call(avg_slopes, robust_args))
   }
   if(type == "pred"){
-    base_args$variables <- vbl
-    robust_args$variables <- vbl
+    if(!"variables" %in% names(base_args)){
+      base_args$variables <- vbl
+    }
+    if(!"variables" %in% names(robust_args)){
+      robust_args$variables <- vbl
+    }
     b_comps <- suppressWarnings(do.call(avg_predictions, base_args))
     b_rob <- suppressWarnings(do.call(avg_predictions, robust_args))
   }
@@ -170,6 +180,5 @@ rob_gamlss <- function(formula, data, ...){
   }
   invisible(list(mod = mod1, weights = w))
 }  
-  
 
 
