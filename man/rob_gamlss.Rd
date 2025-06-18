@@ -25,3 +25,9 @@ to Huber's Bisquare function.
 The function creates a variable called `weight` in the dataset that holds the robust regression weights.  If there is an existing
 variable in your data called `weight`, it will be overwritten.
 }
+\examples{
+data(mtcars)
+baseg <- gamlss::gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
+robg <- rob_gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
+summary(robg)
+}

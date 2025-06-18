@@ -1,4 +1,4 @@
-globalVariables(c("std.error", "gamlss"))
+globalVariables(c("std.error", "gamlss", "a"))
 
 #' Neumayer-Plumper Robustness
 #'
@@ -21,6 +21,16 @@ globalVariables(c("std.error", "gamlss"))
 #' @importFrom stats pnorm
 #' @importFrom dplyr as_tibble select mutate %>% bind_rows
 #' @export
+#' 
+#' @examples
+#' data(mtcars)
+#' # Fit a baseline model
+#' base_mod <- lm(qsec ~ wt + hp + disp, data = mtcars)
+#' # Fit an alternative model to evaluate robustness
+#' rob_mod <- lm(qsec ~ wt + hp + disp + cyl + vs + carb, data = mtcars)
+#' # calculate robustness
+#' np_robust(base_mod, rob_mod, type = "fd", 
+#'          vbl = list(wt = "2sd", hp="2sd", disp="2sd"))
 np_robust <- function(base_mod,
                       robust_mod,
                       vbl,
@@ -126,6 +136,15 @@ globalVariables(c("std.error", "weight"))
 #' @importFrom marginaleffects comparisons predictions slopes 
 #' @importFrom insight get_data
 #' @export
+#' 
+#' @examples
+#' data(mtcars)
+#' # Fit a baseline model
+#' base_mod <- lm(qsec ~ wt + hp + disp, data = mtcars)
+#' # Fit an alternative model to evaluate robustness
+#' rob_mod <- lm(qsec ~ wt + hp + disp + cyl + vs + carb, data = mtcars)
+#' # calculate robustness
+#' ind_robust(base_mod, rob_mod, type = "pred")
 ind_robust <- function(base_mod,
                            robust_mod,
                            vbl = NULL, 
@@ -237,12 +256,19 @@ ind_robust <- function(base_mod,
 ##' @importFrom stats deviance residuals get_all_vars na.omit
 ##' 
 ##' @export
+##' 
+##' @examples
+##' data(mtcars)
+##' baseg <- gamlss::gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
+##' robg <- rob_gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
+##' summary(robg)
 rob_gamlss <- function(formula, data, ...){
   if(!requireNamespace("gamlss"))stop("Please install and load the gamlss package to use this function.\n")
   tmp <- get_all_vars(formula, data=data)
   tmp$weight <- 1
   tmp <- na.omit(tmp)
-  mod1 <- gamlss(formula, data=tmp, weights=tmp$weight, ...)
+  mod1 <- gamlss::gamlss(formula, data=tmp, weights=tmp$weight)
+#  mod1 <- gamlss::gamlss(formula, data=tmp, weights=tmp$weight, ...)
   devDiff <- 1
   prevDev <- deviance(mod1)
   maxit <- 30
@@ -251,9 +277,9 @@ rob_gamlss <- function(formula, data, ...){
     e <- residuals(mod1, type="simple")
     S2e <- sum(e^2)/mod1$df.residual
     se <- e/sqrt(S2e)
-    w <- psi.bisquare(se)
+    w <- MASS::psi.bisquare(se)
     tmp$weight <- w
-    mod1 <- gamlss(formula, data=tmp, weights=weight, ...)
+    mod1 <- gamlss::gamlss(formula, data=tmp, weights=weight, ...)
     devDiff <- abs(deviance(mod1) - prevDev)
     k <- k+1
   }
@@ -273,6 +299,15 @@ rob_gamlss <- function(formula, data, ...){
 #' @importFrom dplyr across everything
 #' @importFrom stats update reformulate
 #' @importFrom insight get_data
+#' 
+#' @examples 
+#' data(mtcars)
+#' base_mod <- lm(qsec ~ wt + hp + disp, data = mtcars)
+#' # build models
+#' mods <- exclusion_mods(c("cyl", "vs", "carb"),
+#'                        always_include = c("wt", "hp", "disp"),
+#'                        base_mod)
+#' np_robust(base_mod, mods, vbl=c("wt", "hp", "disp"), type="fd")
 exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
   combs <- lapply(1:length(vec), \(n)combn(vec, n))
   combs <- lapply(combs, \(x)c(lapply(1:ncol(x), \(i)as.vector(x[,i]))))

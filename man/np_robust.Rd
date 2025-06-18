@@ -39,3 +39,13 @@ Calculate the Neumayer and Pluemper (2017) measure
 of robustness for a robustness model relative to
 a baseline model
 }
+\examples{
+data(mtcars)
+# Fit a baseline model
+base_mod <- lm(qsec ~ wt + hp + disp, data = mtcars)
+# Fit an alternative model to evaluate robustness
+rob_mod <- lm(qsec ~ wt + hp + disp + cyl + vs + carb, data = mtcars)
+# calculate robustness
+np_robust(base_mod, rob_mod, type = "fd", 
+         vbl = list(wt = "2sd", hp="2sd", disp="2sd"))
+}

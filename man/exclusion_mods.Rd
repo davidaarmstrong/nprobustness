@@ -18,3 +18,12 @@ exclusion_mods(vec, always_include = NULL, baseline_model, ...)
 \description{
 Update model by excluding all permutations and combinations of indicated variables.
 }
+\examples{
+data(mtcars)
+base_mod <- lm(qsec ~ wt + hp + disp, data = mtcars)
+# build models
+mods <- exclusion_mods(c("cyl", "vs", "carb"),
+                       always_include = c("wt", "hp", "disp"),
+                       base_mod)
+np_robust(base_mod, mods, vbl=c("wt", "hp", "disp"), type="fd")
+}
