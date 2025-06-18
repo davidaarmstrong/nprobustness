@@ -19,7 +19,7 @@ globalVariables(c("std.error", "gamlss"))
 #'
 #' @importFrom marginaleffects avg_comparisons avg_predictions avg_slopes datagrid
 #' @importFrom stats pnorm
-#' @importFrom dplyr as_tibble select mutate %>%
+#' @importFrom dplyr as_tibble select mutate %>% bind_rows
 #' @export
 np_robust <- function(base_mod,
                       robust_mod,
@@ -29,49 +29,82 @@ np_robust <- function(base_mod,
                       type = c("fd", "slope", "pred"),
                       ...){
   type <- match.arg(type)
+  if(!"variables" %in% names(base_args)){
+    base_args$variables <- vbl
+  }
   base_args$model <- base_mod
-  robust_args$model <- robust_mod
+  if(!"variables" %in% names(robust_args)){
+    robust_args$variables <- vbl
+  }
+  if(!inherits(robust_mod, "list")){
+    robust_args$model <- robust_mod
+  }else{
+    robust_args <- lapply(robust_mod, \(m){
+      args <- robust_args
+      args$model <- m
+      args
+    })
+  }
   if(type == "fd"){
-    if(!"variables" %in% names(base_args)){
-      base_args$variables <- vbl
-    }
-    if(!"variables" %in% names(robust_args)){
-      robust_args$variables <- vbl
-    }
     b_comps <- suppressWarnings(do.call(avg_comparisons, base_args))
-    b_rob <- suppressWarnings(do.call(avg_comparisons, robust_args))
+    if(!inherits(robust_mod, "list")){
+      b_rob <- suppressWarnings(do.call(avg_comparisons, robust_args))
+    }else{
+      b_rob <- lapply(robust_args, \(a){
+        suppressWarnings(do.call(avg_comparisons, a))})
+    }
   }
   if(type == "slope"){
-    if(!"variables" %in% names(base_args)){
-      base_args$variables <- vbl
-    }
-    if(!"variables" %in% names(robust_args)){
-      robust_args$variables <- vbl
-    }
     b_comps <- suppressWarnings(do.call(avg_slopes, base_args))
-    b_rob <- suppressWarnings(do.call(avg_slopes, robust_args))
+    if(!inherits(robust_mod, "list")){
+      b_rob <- suppressWarnings(do.call(avg_slopes, robust_args))
+    }else{
+      b_rob <- lapply(robust_args, \(a){
+        suppressWarnings(do.call(avg_slopes, a))
+    })
+    }    
   }
   if(type == "pred"){
-    if(!"variables" %in% names(base_args)){
-      base_args$variables <- vbl
-    }
-    if(!"variables" %in% names(robust_args)){
-      robust_args$variables <- vbl
-    }
     b_comps <- suppressWarnings(do.call(avg_predictions, base_args))
-    b_rob <- suppressWarnings(do.call(avg_predictions, robust_args))
+    if(!inherits(robust_mod, "list")){
+      b_rob <- suppressWarnings(do.call(avg_predictions, robust_args))
+    }else{
+      b_rob <- lapply(robust_args, \(a){
+        suppressWarnings(do.call(avg_predictions, a))
+      })
+    }    
   }
-  rob <- pnorm(b_comps$conf.high, b_rob$estimate, b_rob$std.error) -
-    pnorm(b_comps$conf.low, b_rob$estimate, b_rob$std.error)
-  res <- select(b_rob, 1:std.error) %>%
-    mutate(conf.low = b_comps$conf.low,
-           conf.high = b_comps$conf.high)
-  res$robust<- rob
+  if(!inherits(b_rob, "list")){
+    rob <- pnorm(b_comps$conf.high, b_rob$estimate, b_rob$std.error) -
+      pnorm(b_comps$conf.low, b_rob$estimate, b_rob$std.error)
+    res <- select(b_rob, 1:std.error) %>%
+      mutate(base_est = b_comps$estimate, 
+             base_lwr = b_comps$conf.low,
+             base_upr = b_comps$conf.high)
+    res$robust<- rob
+  }else{
+    rob <- lapply(b_rob, \(b){
+      rob_score <- pnorm(b_comps$conf.high, b$estimate, b$std.error) -
+      pnorm(b_comps$conf.low, b$estimate, b$std.error)
+      res <- select(b, 1:std.error) %>%
+        mutate(base_est = b_comps$estimate, 
+               base_lwr = b_comps$conf.low,
+               base_upr = b_comps$conf.high)
+      res$robust <- rob_score
+      res
+    })
+    if(is.null(names(robust_mod))){
+      names(rob) <- paste("M", seq_along(rob), sep="")  
+    }else{
+      names(rob) <- names(robust_mod)
+    }
+    res <- bind_rows(rob, .id="model")
+  }
   as_tibble(res)
 }
 
 
-globalVariables("std.error")
+globalVariables(c("std.error", "weight"))
 
 #' Neumayer-Plumper Individual Robustness
 #'
@@ -154,6 +187,7 @@ ind_robust <- function(base_mod,
 ##' variable in your data called `weight`, it will be overwritten.  
 ##' @returns A list with elements `mod` which holds the `gamlss` model object and `weights` which give the robust regression weights
 ##' 
+##' @importFrom utils combn
 ##' @importFrom MASS psi.bisquare
 ##' @importFrom stats deviance residuals get_all_vars na.omit
 ##' 
@@ -163,7 +197,7 @@ rob_gamlss <- function(formula, data, ...){
   tmp <- get_all_vars(formula, data=data)
   tmp$weight <- 1
   tmp <- na.omit(tmp)
-  mod1 <- gamlss(formula, data=tmp, weights=weight, ...)
+  mod1 <- gamlss(formula, data=tmp, weights=tmp$weight, ...)
   devDiff <- 1
   prevDev <- deviance(mod1)
   maxit <- 30
@@ -181,4 +215,30 @@ rob_gamlss <- function(formula, data, ...){
   invisible(list(mod = mod1, weights = w))
 }  
 
-
+#' Exclude all permutations of variables
+#' 
+#' Update model by excluding all permutations and combinations of indicated variables. 
+#' 
+#' @param vec A vector of strings giving variable names to be excluded from the model. 
+#' @param always_include A vector of strings giving variable names that should always be included in the model.  Defaults to `NULL`.
+#' @param baseline_model A model object that will be updated with new formula.  As such, it must be compatible with `update()`. 
+#' @param ... Other arguments, currently not used. 
+#' 
+#' @export
+#' @importFrom stats update reformulate
+#' @importFrom insight get_data
+exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
+  combs <- lapply(1:length(vec), \(n)combn(vec, n))
+  combs <- lapply(combs, \(x)c(lapply(1:ncol(x), \(i)as.vector(x[,i]))))
+  combs <- do.call(c, combs)
+  incl <- lapply(combs, \(x)c(x, always_include))
+  forms <- sapply(incl, \(x)reformulate(x))
+  forms <- c(reformulate(always_include), forms)
+  all_vars <- names(insight::get_data(baseline_model))
+  included <- t(sapply(incl, \(x)all_vars %in% x))
+  colnames(included) <- all_vars
+  included <- included[,-1]
+  mods <- lapply(forms, \(f)update(baseline_model, formula=f))
+  attr(mods, "included") <- included
+  mods
+}   
