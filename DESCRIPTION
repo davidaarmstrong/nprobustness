@@ -1,7 +1,7 @@
 Package: nprobustness
 Type: Package
 Title: Calculates Neumayer-Plümper Robustness
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: person("Dave", "Armstrong", , email="davearmstrong.ps@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-9358-2489"))
 Description: Neumayer and Plümper define robustness as the stability of effects between baseline and alternative models.  `nprobust` calculates these stability coefficients from a pair of models. 

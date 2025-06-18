@@ -138,8 +138,10 @@ ind_robust <- function(base_mod,
     base_args$variables <- vbl
   }
   base_args$model <- base_mod
-  bdat <- get_data(base_mod)
-  base_args$newdata <- bdat
+  if(!"newdata" %in% names(base_args)){
+    bdat <- get_data(base_mod)
+    base_args$newdata <- bdat
+  }
   
   if(!"variables" %in% names(robust_args)){
     robust_args$variables <- vbl
@@ -151,7 +153,9 @@ ind_robust <- function(base_mod,
     robust_args <- lapply(robust_mod, \(m){
       args <- robust_args
       args$model <- m
-      args$newdata <- get_data(m)
+      if(!"newdata" %in% names(a)){
+        args$newdata <- get_data(m)
+      }
       args
     })
   }
