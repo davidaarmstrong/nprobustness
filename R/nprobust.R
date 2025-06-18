@@ -280,7 +280,7 @@ exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
   forms <- sapply(incl, \(x)reformulate(x))
   forms <- c(reformulate(always_include), forms)
   all_vars <- names(insight::get_data(baseline_model))
-  included <- t(sapply(incl, \(x)all_vars %in% x))
+  included <- t(sapply(incl, \(x)vec %in% x))
   colnames(included) <- all_vars
   included <- included[,-1]
   mods <- lapply(forms, \(f)update(baseline_model, formula=f))
