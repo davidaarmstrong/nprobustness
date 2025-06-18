@@ -270,6 +270,7 @@ rob_gamlss <- function(formula, data, ...){
 #' @param ... Other arguments, currently not used. 
 #' 
 #' @export
+#' @importFrom dplyr across everything
 #' @importFrom stats update reformulate
 #' @importFrom insight get_data
 exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
@@ -285,6 +286,7 @@ exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
   mods <- lapply(forms, \(f)update(baseline_model, formula=f))
   included <- rbind(rep(FALSE, ncol(included)), included)
   included <- as_tibble(included)
+  included <- included %>% mutate(across(everything(), ~ifelse(.x, "Yes", "No")))
   attr(mods, "included") <- included
   mods
 }   
