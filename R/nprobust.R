@@ -6,7 +6,7 @@ globalVariables(c("std.error", "gamlss"))
 #' of robustness for a robustness model relative to
 #' a baseline model
 #' @param base_mod A baseline model object
-#' @param robust_mod An alternative robustness object
+#' @param robust_mod An alternative model object or a list of model objects against which robustness of the baseline model will be evaluated.
 #' @param vbl A character string giving the variable
 #' whose robustness is being tested.
 #' @param type The quantity being tested - first difference "fd",  marginal effect "slope", or prediction "pred".
@@ -112,7 +112,7 @@ globalVariables(c("std.error", "weight"))
 #' of robustness for each observation in a robustness model relative to
 #' a baseline model
 #' @param base_mod A baseline model object
-#' @param robust_mod An alternative robustness object
+#' @param robust_mod An alternative model object or a list of model objects against which robustness of the baseline model will be evaluated
 #' @param vbl A character string giving the variable
 #' whose robustness is being tested.  If `type = "pred"`, no variable is needed as predictions are simply made for all observations. 
 #' @param type The quantity being tested - first difference "fd",  marginal effect "slope", or prediction "pred".
@@ -134,42 +134,83 @@ ind_robust <- function(base_mod,
                            type = c("fd", "slope", "pred"),
                            ...){
   type <- match.arg(type)
+  if(!"variables" %in% names(base_args)){
+    base_args$variables <- vbl
+  }
   base_args$model <- base_mod
-  robust_args$model <- robust_mod
   bdat <- get_data(base_mod)
-  rdat <- get_data(robust_mod)
   base_args$newdata <- bdat
-  robust_args$newdata <- rdat
+  
+  if(!"variables" %in% names(robust_args)){
+    robust_args$variables <- vbl
+  }
+  if(!inherits(robust_mod, "list")){
+    robust_args$model <- robust_mod
+    robust_args$newdata <- get_data(robust_mod)
+  }else{
+    robust_args <- lapply(robust_mod, \(m){
+      args <- robust_args
+      args$model <- m
+      args$newdata <- get_data(m)
+      args
+    })
+  }
   if(type == "fd"){
-    if(is.null(vbl)){
-      stop("Must specify variable for comparisons.\n")
-    }else{
-      base_args$variables <- vbl
-      robust_args$variables <- vbl
-    } 
     b_comps <- suppressWarnings(do.call(comparisons, base_args))
-    b_rob <- suppressWarnings(do.call(comparisons, robust_args))
+    if(!inherits(robust_mod, "list")){
+      b_rob <- suppressWarnings(do.call(comparisons, robust_args))
+    }else{
+      b_rob <- lapply(robust_args, \(a){
+        suppressWarnings(do.call(comparisons, a))
+      })
+    }
   }
   if(type == "slope"){
-    if(is.null(vbl)){
-      stop("Must specify variable for comparisons.\n")
-    }else{
-      base_args$variables <- vbl
-      robust_args$variables <- vbl
-    } 
     b_comps <- suppressWarnings(do.call(slopes, base_args))
-    b_rob <- suppressWarnings(do.call(slopes, robust_args))
+    if(!inherits(robust_mod, "list")){
+      b_rob <- suppressWarnings(do.call(slopes, robust_args))
+    }else{
+      b_rob <- lapply(robust_args, \(a){
+        suppressWarnings(do.call(slopes, a))
+      })
+    }
   }
   if(type == "pred"){
     b_comps <- suppressWarnings(do.call(predictions, base_args))
-    b_rob <- suppressWarnings(do.call(predictions, robust_args))
+    if(!inherits(robust_mod, "list")){
+      b_rob <- suppressWarnings(do.call(predictions, robust_args))
+    }else{
+      b_rob <- lapply(robust_args, \(a){
+        suppressWarnings(do.call(predictions, a))
+      })
+    }
   }
-  rob <- pnorm(b_comps$conf.high, b_rob$estimate, b_rob$std.error) -
-    pnorm(b_comps$conf.low, b_rob$estimate, b_rob$std.error)
-  res <- b_rob %>%
-    mutate(conf.low = b_comps$conf.low,
-           conf.high = b_comps$conf.high)
-  res$robust<- rob
+  if(!inherits(b_rob, "list")){
+    rob <- pnorm(b_comps$conf.high, b_rob$estimate, b_rob$std.error) -
+      pnorm(b_comps$conf.low, b_rob$estimate, b_rob$std.error)
+    res <- select(b_rob, 1:std.error) %>%
+      mutate(base_est = b_comps$estimate, 
+             base_lwr = b_comps$conf.low,
+             base_upr = b_comps$conf.high)
+    res$robust<- rob
+  }else{
+    rob <- lapply(b_rob, \(b){
+      rob_score <- pnorm(b_comps$conf.high, b$estimate, b$std.error) -
+        pnorm(b_comps$conf.low, b$estimate, b$std.error)
+      res <- select(b, 1:std.error) %>%
+        mutate(base_est = b_comps$estimate, 
+               base_lwr = b_comps$conf.low,
+               base_upr = b_comps$conf.high)
+      res$robust <- rob_score
+      res
+    })
+    if(is.null(names(robust_mod))){
+      names(rob) <- paste("M", seq_along(rob), sep="")  
+    }else{
+      names(rob) <- names(robust_mod)
+    }
+    res <- bind_rows(rob, .id="model")
+  }
   as_tibble(res)
 }  
 

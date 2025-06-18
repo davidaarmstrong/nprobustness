@@ -17,7 +17,7 @@ ind_robust(
 \arguments{
 \item{base_mod}{A baseline model object}
 
-\item{robust_mod}{An alternative robustness object}
+\item{robust_mod}{An alternative model object or a list of model objects against which robustness of the baseline model will be evaluated}
 
 \item{vbl}{A character string giving the variable
 whose robustness is being tested.  If `type = "pred"`, no variable is needed as predictions are simply made for all observations.}
