@@ -284,6 +284,7 @@ exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
   colnames(included) <- vec
   mods <- lapply(forms, \(f)update(baseline_model, formula=f))
   included <- rbind(rep(FALSE, ncol(included)), included)
+  included <- as_tibble(included)
   attr(mods, "included") <- included
   mods
 }   
