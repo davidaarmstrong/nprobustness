@@ -261,14 +261,15 @@ ind_robust <- function(base_mod,
 ##' data(mtcars)
 ##' baseg <- gamlss::gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
 ##' robg <- rob_gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
-##' summary(robg)
+##' summary(robg$mod)
+##' summary(robg$weights)
 rob_gamlss <- function(formula, data, ...){
   if(!requireNamespace("gamlss"))stop("Please install and load the gamlss package to use this function.\n")
   tmp <- get_all_vars(formula, data=data)
   tmp$weight <- 1
   tmp <- na.omit(tmp)
-  mod1 <- gamlss::gamlss(formula, data=tmp, weights=tmp$weight)
-#  mod1 <- gamlss::gamlss(formula, data=tmp, weights=tmp$weight, ...)
+#  mod1 <- gamlss::gamlss(formula, data=tmp, weights=tmp$weight)
+  mod1 <- gamlss::gamlss(formula, data=tmp, weights=tmp$weight, ...)
   devDiff <- 1
   prevDev <- deviance(mod1)
   maxit <- 30
@@ -325,3 +326,75 @@ exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
   attr(mods, "included") <- included
   mods
 }   
+
+#' Simulate model results
+#' 
+#' Simulates model results under the assumption that the input model 
+#' is correct.  
+#' 
+#' @param model A model object of class `lm` or `glm`. 
+#' @param R Integer giving the number of times the model should be simulated. 
+#' @param ... Other arguments, currently not used. 
+#' 
+#' @export
+#' @examples
+#' data(mtcars)
+#' lmod <- lm(qsec ~ hp + wt + vs, data=mtcars)
+#' mods <- sim_models(lmod, R=10)
+sim_models <- function(model, R=100, ...){
+  if(!inherits(model, "lm") & !inherits(model, "glm")){
+    stop("Model must be an lm or glm.\n")
+  }
+  if(!is.integer(R)){
+    stop("R must be a positive integer value.\n")
+  }
+  UseMethod("sim_models")  
+}
+
+#' @importFrom insight get_data
+#' @importFrom stats confint model.matrix family formula lm runif rnorm model.response model.frame
+#' @method sim_models lm
+#' @export
+#' @rdname sim_models
+sim_models.lm <- function(model, R = 100, ...){
+  d <- insight::get_data(model)
+  X <- model.matrix(model)
+  ci_b <- confint(model)
+  sd_e <- sqrt(sum(model$residuals^2)/model$df.residual)
+  mods <- lapply(1:R, \(i){
+    b <- apply(ci_b, 1, \(x)runif(1, x[1], x[2]))    
+    d[[1]] <- X %*%b + rnorm(nrow(X), 0, sd_e)
+    args <- list(formula= formula(model), data = d, ...)
+    do.call(lm, args)
+  })
+  mods
+}
+#' @importFrom stats rbinom rpois update model.frame
+#' @export
+#' @rdname sim_models
+#' @method sim_models glm
+sim_models.glm <- function(model, R = 100, ...){
+  d <- insight::get_data(model)
+  X <- model.matrix(model)
+  ci_b <- confint(model)
+  mods <- lapply(1:R, \(i){
+    b <- apply(ci_b, 1, \(x)runif(1, x[1], x[2]))
+    eta <- X %*%b
+    ystar <- family(model)$linkinv(eta)
+    if(family(model)$family == "binomial"){
+      if(!inherits(model.response(model.frame(model)), "matrix")){
+        d[[1]] <- rbinom(nrow(X), 1, ystar)
+      }else{
+        n <- rowSums(model.response(model.frame(model)))
+        d[[1]] <- rbinom(nrow(X), n, ystar)
+        d[[2]] <- n-d[[1]]
+      }
+    }
+    if(family(model)$family == "poisson"){
+      d[[1]] <- rpois(nrow(X), ystar)
+    }
+    update(model, data=d)
+  })
+  mods
+}
+
