@@ -258,11 +258,13 @@ ind_robust <- function(base_mod,
 ##' @export
 ##' 
 ##' @examples
+##' \dontrun{
 ##' data(mtcars)
 ##' baseg <- gamlss::gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
 ##' robg <- rob_gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
 ##' summary(robg$mod)
 ##' summary(robg$weights)
+##' }
 rob_gamlss <- function(formula, data, ...){
   if(!requireNamespace("gamlss"))stop("Please install and load the gamlss package to use this function.\n")
   tmp <- get_all_vars(formula, data=data)
@@ -336,6 +338,7 @@ exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
 #' @param R Integer giving the number of times the model should be simulated. 
 #' @param ... Other arguments, currently not used. 
 #' 
+#' @importFrom stats alias
 #' @export
 #' @examples
 #' data(mtcars)
@@ -345,8 +348,11 @@ sim_models <- function(model, R=100, ...){
   if(!inherits(model, "lm") & !inherits(model, "glm")){
     stop("Model must be an lm or glm.\n")
   }
-  if(!is.integer(R)){
-    stop("R must be a positive integer value.\n")
+  a <- alias(model)
+  if(!is.null(a$Complete)){
+    avars <- rownames(a$Complete)
+    stop(paste0("Model contains aliased coefficients, please remove ", 
+                paste(avars, collapse=", "), "and re-estimate the model.\n"))
   }
   UseMethod("sim_models")  
 }
@@ -357,6 +363,7 @@ sim_models <- function(model, R=100, ...){
 #' @export
 #' @rdname sim_models
 sim_models.lm <- function(model, R = 100, ...){
+  R <- as.integer(R)
   d <- insight::get_data(model)
   X <- model.matrix(model)
   ci_b <- confint(model)
@@ -374,6 +381,7 @@ sim_models.lm <- function(model, R = 100, ...){
 #' @rdname sim_models
 #' @method sim_models glm
 sim_models.glm <- function(model, R = 100, ...){
+  R <- as.integer(R)
   d <- insight::get_data(model)
   X <- model.matrix(model)
   ci_b <- confint(model)

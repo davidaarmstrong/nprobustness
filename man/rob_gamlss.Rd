@@ -26,8 +26,11 @@ The function creates a variable called `weight` in the dataset that holds the ro
 variable in your data called `weight`, it will be overwritten.
 }
 \examples{
+\dontrun{
 data(mtcars)
 baseg <- gamlss::gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
 robg <- rob_gamlss(qsec ~ wt + hp + disp + vs + carb, data = mtcars)
-summary(robg)
+summary(robg$mod)
+summary(robg$weights)
+}
 }
