@@ -2,20 +2,27 @@
 % Please edit documentation in R/nprobust.R
 \name{sim_models}
 \alias{sim_models}
-\alias{sim_models.lm}
-\alias{sim_models.glm}
 \title{Simulate model results}
 \usage{
-sim_models(model, R = 100, ...)
-
-\method{sim_models}{lm}(model, R = 100, ...)
-
-\method{sim_models}{glm}(model, R = 100, ...)
+sim_models(
+  base_model,
+  robust_models,
+  orig_data,
+  R = 100,
+  return_data = FALSE,
+  ...
+)
 }
 \arguments{
-\item{model}{A model object of class `lm` or `glm`.}
+\item{base_model}{A model object of class `lm` or `glm`.}
+
+\item{robust_models}{A list of model objects of class `lm` or `glm` that will be used to simulate calculate robustness.}
+
+\item{orig_data}{A data frame with the original data.}
 
 \item{R}{Integer giving the number of times the model should be simulated.}
+
+\item{return_data}{If `TRUE`, the simulated data are returned otherwise they are not (the default).}
 
 \item{...}{Other arguments, currently not used.}
 }
@@ -26,5 +33,6 @@ is correct.
 \examples{
 data(mtcars)
 lmod <- lm(qsec ~ hp + wt + vs, data=mtcars)
-mods <- sim_models(lmod, R=10)
+rmod <- lm(qsec ~ log(hp) + wt + vs, data=mtcars)
+mods <- sim_models(lmod, rmod, orig_data=mtcars, R=10)
 }

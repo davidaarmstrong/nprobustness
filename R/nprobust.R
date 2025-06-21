@@ -1,4 +1,4 @@
-globalVariables(c("std.error", "gamlss", "a"))
+globalVariables(c("std.error", "gamlss", "a", "base_mod", "robust_args", "robust", "label", "model"))
 
 #' Neumayer-Plumper Robustness
 #'
@@ -300,7 +300,7 @@ rob_gamlss <- function(formula, data, ...){
 #' 
 #' @export
 #' @importFrom dplyr across everything
-#' @importFrom stats update reformulate
+#' @importFrom stats update reformulate confint model.matrix family formula lm runif rnorm model.response model.frame
 #' @importFrom insight get_data
 #' 
 #' @examples 
@@ -334,58 +334,123 @@ exclusion_mods <- function(vec, always_include = NULL, baseline_model, ...){
 #' Simulates model results under the assumption that the input model 
 #' is correct.  
 #' 
-#' @param model A model object of class `lm` or `glm`. 
+#' @param base_model A model object of class `lm` or `glm`. 
+#' @param robust_models A list of model objects of class `lm` or `glm` that will be used to simulate calculate robustness.
+#' @param orig_data A data frame with the original data. 
 #' @param R Integer giving the number of times the model should be simulated. 
+#' @param return_data If `TRUE`, the simulated data are returned otherwise they are not (the default). 
 #' @param ... Other arguments, currently not used. 
 #' 
-#' @importFrom stats alias
+#' @importFrom stats alias complete.cases rbinom reorder rpois
 #' @export
 #' @examples
 #' data(mtcars)
 #' lmod <- lm(qsec ~ hp + wt + vs, data=mtcars)
-#' mods <- sim_models(lmod, R=10)
-sim_models <- function(model, R=100, ...){
-  if(!inherits(model, "lm") & !inherits(model, "glm")){
+#' rmod <- lm(qsec ~ log(hp) + wt + vs, data=mtcars)
+#' mods <- sim_models(lmod, rmod, orig_data=mtcars, R=10)
+sim_models <- function(base_model, robust_models, orig_data, R=100, 
+                       return_data = FALSE, ...){
+  if(!inherits(base_model, "lm") & !inherits(base_model, "glm")){
     stop("Model must be an lm or glm.\n")
   }
-  a <- alias(model)
+  a <- alias(base_model)
   if(!is.null(a$Complete)){
     avars <- rownames(a$Complete)
-    stop(paste0("Model contains aliased coefficients, please remove ", 
+    stop(paste0("Base model contains aliased coefficients, please remove ", 
                 paste(avars, collapse=", "), "and re-estimate the model.\n"))
   }
-  UseMethod("sim_models")  
+  if(inherits(robust_models, "list")){
+    for(i in 1:length(robust_models)){
+      a <- alias(robust_models[[i]])
+      if(!is.null(a$Complete)){
+        avars <- rownames(a$Complete)
+        stop(paste0("Robust model ", i, " contains aliased coefficients, please remove ", 
+                    paste(avars, collapse=", "), "and re-estimate the model.\n"))
+      }
+    }
+  }else{
+    a <- alias(robust_models)
+    if(!is.null(a$Complete)){
+      avars <- rownames(a$Complete)
+      stop(paste0("Robust model contains aliased coefficients, please remove ", 
+                  paste(avars, collapse=", "), "and re-estimate the model.\n"))
+    }
+  }
+  dats <- sim_data(base_model, orig_data, R=R, ...)
+  base_mods <- lapply(dats, \(d){
+    cl <- base_model$call
+    cl$data <- d
+    eval(cl)
+  })
+  if(inherits(robust_models, "list")){
+    rob_mods <- lapply(robust_models, \(x){
+      lapply(dats, \(d){
+        cl <- x$call
+        cl$data <- d
+        eval(cl)
+      })
+    })
+  }else{
+    rob_mods <- lapply(dats, \(d){
+      cl <- robust_models$call
+      cl$data <- d
+      eval(cl)
+    })
+  }
+  res <- list(base = base_mods, robust=rob_mods)
+  if(return_data){
+    res$data <- dats
+  }
+  return(res)
 }
 
-#' @importFrom insight get_data
-#' @importFrom stats confint model.matrix family formula lm runif rnorm model.response model.frame
-#' @method sim_models lm
+#' Simulate data under the base model specification
+#' 
+#' Simulates data for lm or glm (binomial or poisson families) assuming that the
+#' baseline model is correctly specified.  
+#' 
+#' @param model The baseline model for a robustness analysis. 
+#' @param orig_data The data frame used to fit the model. 
+#' @param R Number of simulated datasets to make. 
+#' @param ... Other arguments, currently not implemented. 
+#' 
 #' @export
-#' @rdname sim_models
-sim_models.lm <- function(model, R = 100, ...){
+#' @examples
+#' data(mtcars)
+#' mod <- lm(qsec ~ wt + disp + hp, data=mtcars)
+#' sdat <- sim_data(mod, mtcars, R=1)
+#' head(sdat[[1]])
+sim_data <- function(model, orig_data, R=100, ...){
+  UseMethod("sim_data")
+}
+
+#' @export
+#' @method sim_data lm
+#' @rdname sim_data
+sim_data.lm <- function(model, orig_data, R=100, ...){
   R <- as.integer(R)
-  d <- insight::get_data(model)
+  d <- get_all_vars(formula(model), data=orig_data)
+  dat <- orig_data[complete.cases(d), ]
   X <- model.matrix(model)
   ci_b <- confint(model)
   sd_e <- sqrt(sum(model$residuals^2)/model$df.residual)
-  mods <- lapply(1:R, \(i){
+  lapply(1:R, \(x){
     b <- apply(ci_b, 1, \(x)runif(1, x[1], x[2]))    
     d[[1]] <- X %*%b + rnorm(nrow(X), 0, sd_e)
-    args <- list(formula= formula(model), data = d, ...)
-    do.call(lm, args)
+    cbind(d, dat[, setdiff(names(orig_data), names(d))])
   })
-  mods
 }
-#' @importFrom stats rbinom rpois update model.frame
+
 #' @export
-#' @rdname sim_models
-#' @method sim_models glm
-sim_models.glm <- function(model, R = 100, ...){
+#' @method sim_data glm
+#' @rdname sim_data
+sim_data.glm <- function(model, orig_data, R=100, ...){
   R <- as.integer(R)
   d <- insight::get_data(model)
+  dat <- orig_data[complete.cases(d), ]
   X <- model.matrix(model)
   ci_b <- confint(model)
-  mods <- lapply(1:R, \(i){
+  lapply(1:R, \(x){
     b <- apply(ci_b, 1, \(x)runif(1, x[1], x[2]))
     eta <- X %*%b
     ystar <- family(model)$linkinv(eta)
@@ -401,8 +466,78 @@ sim_models.glm <- function(model, R = 100, ...){
     if(family(model)$family == "poisson"){
       d[[1]] <- rpois(nrow(X), ystar)
     }
-    update(model, data=d)
+    cbind(d, dat[, setdiff(names(orig_data), names(d))])
   })
-  mods
 }
 
+#' Simulate robustness scores under baseline model 
+#' 
+#' Simulates robustness scores assuming that the baseline model is correctly
+#' specified. 
+#' 
+#' @param base_model A model, currently lm and glm (binomial and poisson families) are supported. 
+#' @param robust_models A model or list of models against which robustness will be evaluated
+#' @param orig_data The data frame from which the data for `base_model` and `robust_models` are obtained. 
+#' @param R Number of simulations
+#' @param rob_type Type of robustness analysis to do `"avg"` uses the `np_robust()` function and `"ind"` uses the `ind_robust()` function. 
+#' @param vbl Variable(s) for which robustness is to be evaluated. 
+#' @param type Quantity for which robustness will be evaluated - first difference (`"fd"`), slope (`"slope"`) or predictions (`"pred"`).  
+#' @param base_args Arguments to be passed to the robustness analysis for the baseline model.
+#' @param robust_args Arguments to be passed to the robustness analysis for the robustness models. 
+#' @param show_progress If `TRUE`, `pbapply::pblapply()` will be used instead of `lapply()`. 
+#' @param arrange_robust If `TRUE`, the data will be re-arranged according to average simulated robustness value and a new factor variable
+#' `label` will be created that has the appropriate levels. 
+#' @param ... Other arguments passed down to the robustness functions. 
+#' 
+#' @export
+#' @importFrom dplyr bind_rows
+#' @importFrom pbapply pblapply
+sim_robust <- function(base_model,
+                       robust_models, 
+                       orig_data, 
+                       R = 100, 
+                       rob_type = c("avg", "ind"), 
+                       vbl = NULL, 
+                       type = c("fd", "slope", "pred"), 
+                       base_args = NULL, 
+                       robust_args = NULL, 
+                       show_progress=TRUE, 
+                       arrange_robust = TRUE, 
+                       ...){
+  rob_type <- match.arg(rob_type)
+  appfun <- ifelse(show_progress, pblapply, lapply)
+  robfun <- switch(rob_type,
+    avg = np_robust,
+    ind = ind_robust
+  )
+  type <- match.arg(type)
+    sim_mods <- sim_models(base_model, robust_models, 
+                         orig_data, R)
+
+  base_mods <- sim_mods$base
+  robust_mods <- sim_mods$robust
+  n_robust <- ifelse(inherits(robust_mods[[1]], "list"), length(robust_mods), 1)
+  if(n_robust == 1){
+    robs <- appfun(seq_along(base_mods), \(i){
+      robfun(base_mods[[i]], robust_mods[[i]], vbl = vbl, base_args = base_args, robust_args=robust_args, type=type, ...)  
+    })
+   robs <- bind_rows(robs, .id="iter") 
+  }else{
+    robs <- lapply(seq_along(robust_mods), \(m){
+      tmp <- appfun(seq_along(base_mods), \(i){
+        robfun(base_mods[[i]], robust_mods[[m]][[i]], vbl = vbl, base_args = base_args, robust_args=robust_args, type, ...)  
+      })
+      tmp <- bind_rows(tmp, .id="iter")
+      tmp$model <- paste0("M", m)
+      tmp
+    })
+    robs <- bind_rows(robs)
+  }
+  act <- robfun(base_mod, robust_models, vbl = vbl, base_args = base_args, robust_args=robust_args) 
+  if(arrange_robust){
+    robs <- robs  %>% mutate(label = factor(model), label = reorder(label, robust, mean))
+    act <- act %>% mutate(label = factor(model, levels=robs$label))
+  }  
+  res <- list(simulated = robs, actual = act )
+  return(res)
+}
