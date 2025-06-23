@@ -490,7 +490,7 @@ sim_data.glm <- function(model, orig_data, R=100, ...){
 #' @param ... Other arguments passed down to the robustness functions. 
 #' 
 #' @export
-#' @importFrom dplyr bind_rows
+#' @importFrom dplyr bind_rows mutate
 #' @importFrom pbapply pblapply
 sim_robust <- function(base_model,
                        robust_models, 
@@ -521,7 +521,7 @@ sim_robust <- function(base_model,
     robs <- appfun(seq_along(base_mods), \(i){
       robfun(base_mods[[i]], robust_mods[[i]], vbl = vbl, base_args = base_args, robust_args=robust_args, type=type, ...)  
     })
-   robs <- bind_rows(robs, .id="iter") 
+   robs <- bind_rows(robs, .id="iter") %>% mutate(model = "M1")
   }else{
     robs <- lapply(seq_along(robust_mods), \(m){
       tmp <- appfun(seq_along(base_mods), \(i){
