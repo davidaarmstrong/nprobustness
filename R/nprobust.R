@@ -643,3 +643,7 @@ make_ME_mods <- function(model, data, vbl, scale_dv = TRUE, scale_vbl=TRUE, n_le
     bind_rows()
   return(list(params = mod_res, models = mods, data= D))
 }
+
+
+
+
