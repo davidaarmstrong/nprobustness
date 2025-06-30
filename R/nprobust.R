@@ -1,4 +1,4 @@
-globalVariables(c("std.error", "gamlss", "a", "base_mod", "robust_args", "robust", "label", "model"))
+globalVariables(c("std.error", "gamlss", "a", "base_mod", "robust_args", "robust", "label", "model", "term"))
 
 #' Neumayer-Plumper Robustness
 #'
@@ -543,4 +543,103 @@ sim_robust <- function(base_model,
   }  
   res <- list(simulated = robs, actual = act )
   return(res)
+}
+
+
+#' Get F-test Results
+#' 
+#' Get the results of an F-test for dropping each model term independently. 
+#' 
+#' @param x A model object
+#' @param vbl A string giving the variable name associated with the effect of interest
+#' @param ... other arguments, not currently implemented. 
+#' 
+#' @importFrom stats drop1
+#' 
+#' @export
+#' 
+#' @returns A scalar giving the p-value for the variable of interest. 
+#' @examples 
+#' data(mtcars)
+#' mod <- lm(mpg ~ poly(wt, 2) + hp + vs, data=mtcars)
+#' get_anova(mod, "wt")
+get_anova <- function(x, vbl, ...){
+  a <- try(drop1(x, test="F"))
+  if(!inherits(a, "try-error")){
+    p <- a[grep(vbl, rownames(a)), 6]  
+  }else{
+    p <- NA
+  }
+  p
+}
+
+## Make Confounding and Error Variable Models
+#' 
+#' Makes models where the confounding variable's correlation with the 
+#' variable of interest is controlled.  
+#' 
+#' @param model A model object of class - `lm` and `glm` should work, though `glm` will 
+#' likely require `scale_dv=FALSE`.  
+#' @param data A data frame from which model variables can be retrieved. 
+#' @param vbl A string giving the name of the variable to be evaluated. 
+#' @param scale_dv If `scale_dv=TRUE` and `scale_vbl=FALSE`, then the dependent variable
+#' in the model will be scaled to have the same variance as the variable of interest. If
+#' `scale_dv=TRUE` and `scale_vbl=TRUE`, then both variables will be scaled to have variance of 1. 
+#' @param scale_vbl If `scale_dv=FALSE` and `scale_vbl=TRUE`, then the variable of interest
+#' in the model will be scaled to have the same variance as the dependent variable. If
+#' `scale_dv=TRUE` and `scale_vbl=TRUE`, then both variables will be scaled to have variance of 1. 
+#' @param n_levels The number of levels used in the weights between the common variance and error. 
+#' @param ... other arguments, not currently implemented. 
+#' 
+#' @export 
+#' @importFrom stats princomp cor sd terms
+#' @importFrom broom tidy
+#' @importFrom dplyr filter
+#' @returns A list with three elements: 
+#' * params: a data frame with the variables returned by `broom::tidy()` along with `rzx` and `rzy` #' - the correlation between the confounding variable and the independent and dependent variables as #' well as `p_anova` the p-value for the F-test of the joint significance of the regressors 
+#' belonging to the variable of interest. 
+#' * models: a list of the models estimated. 
+#' * data: A data frame containing the variables for the models. 
+#' @examples
+#' data(mtcars)
+#' base_mod <- lm(mpg ~ disp + wt + hp + vs, data=mtcars)
+#' m_hp <- make_ME_mods(base_mod, mtcars, "hp", scale_dv=TRUE, scale_vbl=TRUE)
+make_ME_mods <- function(model, data, vbl, scale_dv = TRUE, scale_vbl=TRUE, n_levels=21, ...){
+  D <- get_all_vars(formula(model), data)
+  D <- na.omit(D)
+  dv_name <- setdiff(names(attr(terms(model), "dataClasses")), attr(terms(model), "term.labels"))
+  if(scale_dv & !scale_vbl){
+    D[[dv_name]] <- D[[dv_name]]*sd(D[[vbl]])/sd(D[[dv_name]])
+  }
+  if(!scale_dv & scale_vbl){
+    D[[vbl]] <- D[[vbl]]*sd(D[[dv_name]])/sd(D[[vbl]])
+  }
+  if(scale_dv & scale_vbl){
+    D[[vbl]] <- c(scale(D[[vbl]]))
+    D[[dv_name]] <- c(scale(D[[dv_name]]))
+  }
+  if(!scale_dv & !scale_vbl){
+    stop("For PCA to control correlation among variables, either scale_dv or scale_vbl (or both) should be true.\n")
+  }
+  M <- princomp(D[,c(vbl, dv_name)])$scores[,1]
+  E <- rnorm(length(M))
+  E <- lm(E ~ ., data=D)$residuals
+  E <- E * sd(M)/sd(E)
+  p <- seq(0,1, length=n_levels)
+  D$M <- M; D$E <- E
+  mods <- lapply(p, \(w){
+    d <- D
+    d$C <- w*M + (1-w)*E
+    args <- list(data= d, formula = . ~ .+C, object=base_mod)
+    do.call(update, args)
+  })
+  mod_res <- lapply(mods, \(x){
+    D <- insight::get_data(x)         
+    out <- broom::tidy(x) %>% filter(grepl(vbl, term))%>% 
+      mutate(rzy = cor(D$C, D[[dv_name]]), 
+             rzx = cor(D$C, D[[vbl]]))
+    out$p_anova = get_anova(x, vbl)[1]
+    out}) %>% 
+    bind_rows()
+  return(list(params = mod_res, models = mods, data= D))
 }
