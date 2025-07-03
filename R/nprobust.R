@@ -533,7 +533,7 @@ sim_robust <- function(base_model,
     })
     robs <- bind_rows(robs)
   }
-  act <- robfun(base_model, robust_models, vbl = vbl, base_args = base_args, robust_args=robust_args) 
+  act <- robfun(base_model, robust_models, vbl = vbl, base_args = base_args, robust_args=robust_args, type=type, ...) 
   if(!"model" %in% names(act)){
     act$model <- "M1"
   }
