@@ -92,7 +92,7 @@ make_mono_var <- function(obj, data, mono_var, direction = c("up", "down")) {
     match(as.character(data[[mono_var]]), lookup$old)
   ]
 
-  data[[new_var]] <- factor(data[[new_var]], ordered = TRUE)
+  data[[new_var]] <- factor(data[[new_var]], ordered = FALSE)
 
   message("Ordinal variable ", new_var, " created in returned data frame.")
 
