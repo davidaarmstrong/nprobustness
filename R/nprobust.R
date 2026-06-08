@@ -85,17 +85,17 @@ np_robust <- function(base_mod,
     }    
   }
   if(!inherits(b_rob, "list")){
-    rob <- pnorm(b_comps$conf.high, b_rob$estimate, b_rob$std.error) -
-      pnorm(b_comps$conf.low, b_rob$estimate, b_rob$std.error)
+    rob <- .np_score(b_comps$conf.low, b_comps$conf.high,
+                     b_rob$estimate, b_rob$std.error)
     res <- select(b_rob, 1:std.error) %>%
-      mutate(base_est = b_comps$estimate, 
+      mutate(base_est = b_comps$estimate,
              base_lwr = b_comps$conf.low,
              base_upr = b_comps$conf.high)
     res$robust<- rob
   }else{
     rob <- lapply(b_rob, \(b){
-      rob_score <- pnorm(b_comps$conf.high, b$estimate, b$std.error) -
-      pnorm(b_comps$conf.low, b$estimate, b$std.error)
+      rob_score <- .np_score(b_comps$conf.low, b_comps$conf.high,
+                              b$estimate, b$std.error)
       res <- select(b, 1:std.error) %>%
         mutate(base_est = b_comps$estimate, 
                base_lwr = b_comps$conf.low,
@@ -172,7 +172,7 @@ ind_robust <- function(base_mod,
     robust_args <- lapply(robust_mod, \(m){
       args <- robust_args
       args$model <- m
-      if(!"newdata" %in% names(a)){
+      if(!"newdata" %in% names(args)){
         args$newdata <- get_data(m)
       }
       args
@@ -209,17 +209,17 @@ ind_robust <- function(base_mod,
     }
   }
   if(!inherits(b_rob, "list")){
-    rob <- pnorm(b_comps$conf.high, b_rob$estimate, b_rob$std.error) -
-      pnorm(b_comps$conf.low, b_rob$estimate, b_rob$std.error)
+    rob <- .np_score(b_comps$conf.low, b_comps$conf.high,
+                     b_rob$estimate, b_rob$std.error)
     res <- select(b_rob, 1:std.error) %>%
-      mutate(base_est = b_comps$estimate, 
+      mutate(base_est = b_comps$estimate,
              base_lwr = b_comps$conf.low,
              base_upr = b_comps$conf.high)
     res$robust<- rob
   }else{
     rob <- lapply(b_rob, \(b){
-      rob_score <- pnorm(b_comps$conf.high, b$estimate, b$std.error) -
-        pnorm(b_comps$conf.low, b$estimate, b$std.error)
+      rob_score <- .np_score(b_comps$conf.low, b_comps$conf.high,
+                              b$estimate, b$std.error)
       res <- select(b, 1:std.error) %>%
         mutate(base_est = b_comps$estimate, 
                base_lwr = b_comps$conf.low,
@@ -427,16 +427,16 @@ sim_data <- function(model, orig_data, R=100, ...){
 #' @export
 #' @method sim_data lm
 #' @rdname sim_data
+#' @importFrom MASS mvrnorm
 sim_data.lm <- function(model, orig_data, R=100, ...){
   R <- as.integer(R)
   d <- get_all_vars(formula(model), data=orig_data)
   dat <- orig_data[complete.cases(d), ]
   X <- model.matrix(model)
-  ci_b <- confint(model)
   sd_e <- sqrt(sum(model$residuals^2)/model$df.residual)
   lapply(1:R, \(x){
-    b <- apply(ci_b, 1, \(x)runif(1, x[1], x[2]))    
-    d[[1]] <- X %*%b + rnorm(nrow(X), 0, sd_e)
+    b <- MASS::mvrnorm(1, coef(model), vcov(model))
+    d[[1]] <- X %*% b + rnorm(nrow(X), 0, sd_e)
     cbind(d, dat[, setdiff(names(orig_data), names(d))])
   })
 }
