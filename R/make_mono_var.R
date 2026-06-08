@@ -68,10 +68,9 @@ make_mono_var <- function(obj, data, mono_var, direction = c("up", "down")) {
   # Build grid over original factor levels
   levs <- levels(data[[mono_var]])
 
-  d <- marginaleffects::datagrid(
-    model = obj,
-    !!mono_var := factor(levs, levels = levs)
-  ) |>
+  grid_args <- list(model = obj, factor(levs, levels = levs))
+  names(grid_args)[2] <- mono_var
+  d <- do.call(marginaleffects::datagrid, grid_args) |>
     dplyr::arrange(.data[[mono_var]])
 
   # Predictions from restricted model on the grid
