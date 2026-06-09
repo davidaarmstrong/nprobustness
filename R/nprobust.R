@@ -18,7 +18,7 @@ globalVariables(c("std.error", "gamlss", "a", "base_mod", "robust_args", "robust
 #' @returns A data frame that contains the robust model estimate and standard error along with the 95% CI from the baseline model and the robustness calculation.
 #'
 #' @importFrom marginaleffects avg_comparisons avg_predictions avg_slopes datagrid
-#' @importFrom stats pnorm
+#' @importFrom stats pnorm coef vcov
 #' @importFrom dplyr as_tibble select mutate %>% bind_rows
 #' @export
 #' 
