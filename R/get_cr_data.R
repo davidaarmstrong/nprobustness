@@ -52,7 +52,7 @@ get_cr_data <- function(obj, term, data, ...) {
                    type = "terms",
                    interval = "confidence",
                    terms = term)
-  pred_df <- do.call(data.frame, preds[1:3]) |>
+  pred_df <- do.call(data.frame, preds[c(1, 3:4)]) |>
     setNames(c("f_hat", "lwr", "upr"))
   pred_df$e <- obj$residuals
   pred_df$cr <- pred_df$f_hat + pred_df$e
