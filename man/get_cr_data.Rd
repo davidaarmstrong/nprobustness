@@ -2,12 +2,19 @@
 % Please edit documentation in R/get_cr_data.R
 \name{get_cr_data}
 \alias{get_cr_data}
+\alias{get_cr_data.lm}
+\alias{get_cr_data.glm}
 \title{Component-Plus-Residual Data for a Model Term}
 \usage{
 get_cr_data(obj, term, data, ...)
+
+\method{get_cr_data}{lm}(obj, term, data, ...)
+
+\method{get_cr_data}{glm}(obj, term, data, ...)
 }
 \arguments{
-\item{obj}{A fitted \code{lm} object.}
+\item{obj}{A fitted model object.  Methods are provided for \code{lm} and
+\code{glm}.}
 
 \item{term}{Character string naming the model term for which C+R data are
 required.  Must match one of the term labels returned by
@@ -28,17 +35,18 @@ A data frame with one row per observation and the following columns:
     \code{f_hat}.}
   \item{upr}{Upper bound of the pointwise confidence interval for
     \code{f_hat}.}
-  \item{e}{Raw residuals from \code{obj}.}
+  \item{e}{Residuals: raw residuals for \code{lm}, working residuals for
+    \code{glm}.}
   \item{cr}{Component-plus-residual value: \code{f_hat + e}.}
   \item{x}{The untransformed predictor variable extracted from \code{data}.}
 }
 }
 \description{
 Extracts the data needed to draw a component-plus-residual (partial
-residual) plot for a single term in a linear model.  The function returns
-the fitted component \eqn{\hat{f}(x)}, its confidence band, the raw
-residuals, the C+R value \eqn{\hat{f}(x) + e}, and the untransformed
-predictor variable \eqn{x}.
+residual) plot for a single term in a fitted model.  The function returns
+the fitted component \eqn{\hat{f}(x)}, its confidence band, the residuals,
+the C+R value \eqn{\hat{f}(x) + e}, and the untransformed predictor
+variable \eqn{x}.
 }
 \details{
 When a term is specified as a transformation of a variable (e.g.\
@@ -46,6 +54,12 @@ When a term is specified as a transformation of a variable (e.g.\
 to the linear predictor while \code{x} contains the original, untransformed
 variable extracted from \code{data}.  This makes it straightforward to plot
 the C+R values against the predictor on its natural scale.
+
+For \code{glm} objects the component \eqn{\hat{f}(x)} is on the link scale
+(as returned by \code{predict(..., type = "terms")}), and the residuals are
+working residuals (\code{residuals(obj, type = "working")}), so the C+R
+values are also on the link scale.  For \code{lm} objects raw residuals are
+used.
 }
 \examples{
 data(Prestige, package = "carData")
@@ -53,6 +67,7 @@ Prestige$income <- Prestige$income / 1000
 Prestige <- Prestige[complete.cases(
   Prestige[, c("prestige", "income", "education", "women")]), ]
 
+## lm method
 pmod <- lm(prestige ~ education + women + log(income), data = Prestige)
 cr <- get_cr_data(pmod, "log(income)", Prestige)
 plot(cr$x, cr$cr, xlab = "income (thousands)", ylab = "Component + Residual")
