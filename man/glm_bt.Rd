@@ -2,9 +2,12 @@
 % Please edit documentation in R/glm_bt.R
 \name{glm_bt}
 \alias{glm_bt}
+\alias{print.glm_bt}
 \title{Box-Tidwell Power Transformation for GLMs}
 \usage{
 glm_bt(formula, data, width = 6, glm_args = list(), ...)
+
+\method{print}{glm_bt}(x, ...)
 }
 \arguments{
 \item{formula}{A formula containing \code{lambda} as described above.
@@ -25,6 +28,8 @@ uses \code{glm}'s defaults (Gaussian family with identity link).}
 
 \item{...}{Additional arguments passed to \code{\link[maxLik]{maxLik}}
 (e.g. \code{method}, \code{iterlim}, \code{tol}).}
+
+\item{x}{A \code{glm_bt} object.}
 }
 \value{
 A list with two elements:

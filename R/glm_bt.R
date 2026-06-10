@@ -92,5 +92,17 @@ glm_bt <- function(formula, data, width = 6, glm_args = list(), ...) {
   out    <- c(fit$estimate, confint(fit))
   lambda <- setNames(width * pnorm(out) - (width / 2),
                      c("estimate", "lower", "upper"))
-  list(lambda = lambda, mle_res = fit)
+  res <- list(lambda = lambda, mle_res = fit)
+  class(res) <- "glm_bt"
+  res
+}
+
+#' @rdname glm_bt
+#' @param x A \code{glm_bt} object.
+#' @export
+print.glm_bt <- function(x, ...) {
+  cat("Box-Tidwell Power Transformation\n")
+  cat("---------------------------------\n")
+  print(x$lambda, digits = 4)
+  invisible(x)
 }

@@ -2,6 +2,7 @@
 
 S3method(get_cr_data,glm)
 S3method(get_cr_data,lm)
+S3method(print,glm_bt)
 S3method(robustness,"function")
 S3method(robustness,numeric)
 S3method(sim_data,glm)
