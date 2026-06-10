@@ -81,10 +81,13 @@ get_cr_data.lm <- function(obj, term, data, ...) {
 get_cr_data.glm <- function(obj, term, data, ...) {
   preds <- predict(obj,
                    type = "terms",
-                   interval = "confidence",
+                   se.fit = TRUE,
                    terms = term)
-  pred_df <- do.call(data.frame, preds[c(1, 3:4)]) |>
-    setNames(c("f_hat", "lwr", "upr"))
+  pred_df <- data.frame(
+    f_hat = preds$fit[, 1],
+    lwr   = preds$fit[, 1] - 1.96 * preds$se.fit[, 1],
+    upr   = preds$fit[, 1] + 1.96 * preds$se.fit[, 1]
+  )
   pred_df$e <- residuals(obj, type = "working")
   pred_df$cr <- pred_df$f_hat + pred_df$e
   var_name <- all.vars(str2lang(term))
