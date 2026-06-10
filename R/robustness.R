@@ -211,7 +211,7 @@ robustness.function <- function(target, alternative,
     },
 
     js = {
-      m     <- function(x) (f(x) + g(x)) / 2
+      m     <- function(x) pmax((f(x) + g(x)) / 2, .Machine$double.xmin)
       kl_fm <- function(x) { fx <- f(x); mx <- m(x); ifelse(fx <= 0, 0, fx * log(fx / mx)) }
       kl_gm <- function(x) { gx <- g(x); mx <- m(x); ifelse(gx <= 0, 0, gx * log(gx / mx)) }
       (integrate(kl_fm, eff_lo, eff_hi)$value +
@@ -343,12 +343,17 @@ robustness.numeric <- function(target, alternative,
 
 ## Identify the region of x where f(x) > tol * max(f).
 ## Returns c(lo, hi) padded by one grid step, or NULL if f is zero throughout.
-.locate_support <- function(f, range, n, tol = 1e-8) {
-  x   <- seq(range[1L], range[2L], length.out = n)
-  y   <- vapply(x, f, numeric(1L))
-  idx <- which(y > max(y) * tol)
+## An absolute floor (abs_tol) guards against false peaks from denormal
+## floating-point values when the true support lies entirely outside the
+## scan window (e.g. distributions centred far from zero).
+.locate_support <- function(f, range, n, tol = 1e-8, abs_tol = .Machine$double.eps) {
+  x     <- seq(range[1L], range[2L], length.out = n)
+  y     <- vapply(x, f, numeric(1L))
+  max_y <- max(y)
+  if (max_y < abs_tol) return(NULL)
+  idx   <- which(y > max_y * tol)
   if (length(idx) == 0L) return(NULL)
-  dx  <- x[2L] - x[1L]
+  dx    <- x[2L] - x[1L]
   c(x[max(1L, min(idx) - 1L)] - dx,
     x[min(n,  max(idx) + 1L)] + dx)
 }
