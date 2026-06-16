@@ -1,7 +1,7 @@
 Package: nprobustness
 Type: Package
 Title: Calculates Neumayer-Plümper Robustness
-Version: 0.3.1
+Version: 0.3.2
 Depends: R (>= 4.1.0)
 Authors@R: c(person("Dave", "Armstrong", , email="davearmstrong.ps@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-9358-2489")), 

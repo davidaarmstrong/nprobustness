@@ -176,18 +176,44 @@ robustness.function <- function(target, alternative,
   # places quadrature points that are far too spread out to resolve narrow
   # distributions (e.g. posteriors with small SEs).  Scanning for the actual
   # support of f+g and integrating over that finite interval instead is both
-  # more stable and faster.  The scan starts tight (±10) and widens only if
-  # needed; the user-supplied support acts as a hard constraint if finite.
+  # more stable and faster.  The user-supplied support acts as a hard
+  # constraint if finite.
   eff_lo <- support[1L]
   eff_hi <- support[2L]
   if (is.infinite(eff_lo) || is.infinite(eff_hi)) {
-    h      <- function(x) f(x) + g(x)
-    bounds <- .locate_support(h, c(-10,  10),  1000L)
-    if (is.null(bounds)) bounds <- .locate_support(h, c(-100,  100), 1000L)
-    if (is.null(bounds)) bounds <- .locate_support(h, c(-1e4, 1e4),  1000L)
-    if (!is.null(bounds)) {
-      if (is.infinite(eff_lo)) eff_lo <- bounds[1L]
-      if (is.infinite(eff_hi)) eff_hi <- bounds[2L]
+    # Primary path: locate each density's mode, then walk outward from it in
+    # each direction until the density drops below tol * peak.  This adapts
+    # automatically to any location and scale without needing a fixed search
+    # window.  Each density gets its own threshold so distributions with very
+    # different peak heights (e.g. narrow vs. wide) are handled fairly.
+    pf <- .find_peak(f)
+    pg <- .find_peak(g)
+    if (!is.null(pf) && !is.null(pg)) {
+      tol  <- 1e-8
+      sd_f <- 1 / (pf$peak * sqrt(2 * pi))
+      sd_g <- 1 / (pg$peak * sqrt(2 * pi))
+      lo_f <- .bound_search(f, pf$mode, sd_f, -1L, pf$peak * tol)
+      hi_f <- .bound_search(f, pf$mode, sd_f, +1L, pf$peak * tol)
+      lo_g <- .bound_search(g, pg$mode, sd_g, -1L, pg$peak * tol)
+      hi_g <- .bound_search(g, pg$mode, sd_g, +1L, pg$peak * tol)
+      if (is.infinite(eff_lo)) eff_lo <- min(lo_f, lo_g)
+      if (is.infinite(eff_hi)) eff_hi <- max(hi_f, hi_g)
+    }
+    # Fallback if .find_peak() returns NULL for either distribution (true peak
+    # lies beyond ±10^6 or the density is zero everywhere in those ranges).
+    if (is.infinite(eff_lo) || is.infinite(eff_hi)) {
+      h <- function(x) f(x) + g(x)
+      for (win in list(c(-10, 10), c(-100, 100), c(-1e4, 1e4))) {
+        b <- .locate_support(h, win, 1000L)
+        if (!is.null(b)) {
+          mass <- tryCatch(integrate(h, b[1L], b[2L])$value, error = function(e) 0)
+          if (mass >= 0.5) {
+            if (is.infinite(eff_lo)) eff_lo <- b[1L]
+            if (is.infinite(eff_hi)) eff_hi <- b[2L]
+            break
+          }
+        }
+      }
     }
   }
 
@@ -339,6 +365,45 @@ robustness.numeric <- function(target, alternative,
 
   # Step 3 — invert by linear interpolation
   vapply(probs, function(p) approxfun(cdf, x)(p), numeric(1L))
+}
+
+## Walk from `start` in the given direction (+1 or -1) until f(x) falls to or
+## below `threshold`, using exponential step-doubling to bracket the crossing,
+## then bisect to pinpoint it.  `step` is the initial stride (≈ 1 estimated
+## SD of the distribution); it need not be exact — the doubling loop corrects
+## for under- or over-estimates.
+.bound_search <- function(f, start, step, direction, threshold) {
+  step  <- abs(step)
+  x     <- start                        # at the mode: f(x) > threshold
+  x_new <- start + direction * step
+  for (i in seq_len(64L)) {             # exponential expansion to bracket
+    if (f(x_new) <= threshold) break
+    x    <- x_new
+    step <- step * 2
+    x_new <- start + direction * step
+  }
+  for (i in seq_len(60L)) {             # bisect to refine the crossing point
+    mid <- (x + x_new) / 2
+    if (f(mid) > threshold) x <- mid else x_new <- mid
+    if (abs(x_new - x) < 1e-12 * (1 + abs(mid))) break
+  }
+  x_new
+}
+
+## Locate the approximate mode and peak density value of a density function.
+## Scans at progressively coarser resolutions (±100, ±10^4, ±10^6) so that
+## distributions centred anywhere on the real line are found.  Returns
+## list(mode, peak) where peak is the maximum density observed, or NULL if
+## f appears zero throughout all three scan ranges.
+.find_peak <- function(f) {
+  for (rng in list(c(-100, 100), c(-1e4, 1e4), c(-1e6, 1e6))) {
+    x    <- seq(rng[1L], rng[2L], length.out = 1000L)
+    y    <- vapply(x, f, numeric(1L))
+    peak <- max(y, na.rm = TRUE)
+    if (is.finite(peak) && peak > .Machine$double.eps)
+      return(list(mode = x[which.max(y)], peak = peak))
+  }
+  NULL
 }
 
 ## Identify the region of x where f(x) > tol * max(f).
