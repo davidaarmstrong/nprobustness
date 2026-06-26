@@ -5,10 +5,15 @@
 #' vector of posterior draws (non-parametric).  Both arguments must be the
 #' same class.
 #'
-#' @param target The target (baseline) distribution: either a density function
-#'   such as \code{dnorm}, or a numeric vector of posterior/bootstrap draws.
-#' @param alternative The alternative distribution: must match the class of
-#'   \code{target} — both functions or both numeric vectors.
+#' @param target The target (baseline) distribution: a density function such as
+#'   \code{dnorm}, a numeric vector of posterior/bootstrap draws, or a numeric
+#'   \emph{matrix} of draws (columns are independent comparisons).
+#' @param alternative The alternative distribution.  For the function method
+#'   must be the same density function as \code{target}.  For the numeric
+#'   method may be a matrix even when \code{target} is a vector, in which case
+#'   each column of \code{alternative} is compared to \code{target}.  For the
+#'   matrix method, \code{alternative} may be a matrix (column-wise pairing)
+#'   or a vector (each column of \code{target} vs the same vector).
 #' @param type Character string or vector of strings naming the measure(s) to
 #'   compute.  Any combination of \code{"ovl"} (Overlap Coefficient),
 #'   \code{"js"} (Jensen-Shannon Divergence), \code{"kl"}
@@ -18,7 +23,12 @@
 #'   density function (e.g. \code{list(mean = 1, sd = 0.3)} for \code{dnorm}).
 #'   Ignored for the numeric method.
 #' @param alt_args Named list of parameters for \code{alternative} when it is
-#'   a density function.  Ignored for the numeric method.
+#'   a density function (e.g. \code{list(mean = 1.5, sd = 0.5)}).  To
+#'   evaluate multiple alternatives against a common target, supply a
+#'   \emph{list of such lists}
+#'   (e.g. \code{list(list(mean=1,sd=0.3), list(mean=2,sd=0.5))}); the result
+#'   is then a tibble with one row per alternative.  Ignored for the numeric
+#'   and matrix methods.
 #' @param target_q The quantile function corresponding to \code{target} (e.g.
 #'   \code{qnorm} when \code{target = dnorm}).  Used only by the
 #'   \strong{function} method with \code{"np"} in \code{type} to obtain the
@@ -79,11 +89,12 @@
 #' evaluated using the trapezoidal rule.  For \code{"np"} the 95\,\% interval
 #' is the empirical \code{stats::quantile(target, c(0.025, 0.975))}.
 #'
-#' @return A named numeric vector with one element per requested measure.
-#'   Regardless of the order supplied in \code{type}, results are always
-#'   returned in canonical order: similarity measures first
-#'   (\code{"ovl"}, \code{"np"}), then divergence measures
-#'   (\code{"js"}, \code{"kl"}).
+#' @return For a single target–alternative pair (the default), a named numeric
+#'   vector in canonical order: \code{"ovl"}, \code{"np"}, \code{"js"},
+#'   \code{"kl"}.  For vectorised calls — multiple \code{alt_args} lists
+#'   (function method) or a matrix \code{alternative} (numeric/matrix methods)
+#'   — a \link[tibble]{tibble} with a leading \code{model} column and one row
+#'   per alternative.
 #'
 #' @seealso \code{\link{np_robust}}, \code{\link{ind_robust}}
 #'
@@ -115,6 +126,7 @@
 #' robustness(base_draws, alt_draws, type = c("ovl", "js", "kl", "np"))
 #'
 #' @importFrom stats integrate density approxfun quantile
+#' @importFrom dplyr as_tibble
 #' @export
 robustness <- function(target, alternative,
                        type        = c("ovl", "js", "kl", "np"),
@@ -161,6 +173,28 @@ robustness.function <- function(target, alternative,
       }
     }
     # Name does not start with "d" (custom density) — fall through silently.
+  }
+
+  # --- Vectorised path: alt_args is a list of named lists ---
+  # Detected by checking whether the first element is itself a list.
+  # Single-alternative callers pass list(mean=..., sd=...) whose elements are
+  # scalars, not lists, so they fall through to the scalar path below.
+  if (is.list(alt_args) && length(alt_args) > 0L && is.list(alt_args[[1L]])) {
+    nms      <- if (!is.null(names(alt_args))) names(alt_args)
+                else paste0("M", seq_along(alt_args))
+    res_list <- lapply(alt_args, function(aa) {
+      robustness(target, alternative,
+                 type        = types,
+                 target_args = target_args,
+                 alt_args    = aa,
+                 target_q    = target_q,   # already resolved above
+                 support     = support,
+                 n           = n, ...)
+    })
+    df           <- as.data.frame(do.call(rbind, res_list))
+    df           <- cbind(model = nms, df)
+    rownames(df) <- NULL
+    return(dplyr::as_tibble(df))
   }
 
   # Build density closures once; reused across all requested measures.
@@ -273,6 +307,23 @@ robustness.numeric <- function(target, alternative,
                                ...) {
   types <- match.arg(type, several.ok = TRUE)
 
+  # --- Vectorised path: alternative is a matrix ---
+  # Each column of alternative is compared independently to target.
+  if (is.matrix(alternative)) {
+    nms      <- if (!is.null(colnames(alternative))) colnames(alternative)
+                else paste0("M", seq_len(ncol(alternative)))
+    res_list <- lapply(seq_len(ncol(alternative)), function(j) {
+      robustness.numeric(target, alternative[, j],
+                         type = types, target_args = target_args,
+                         alt_args = alt_args, target_q = target_q,
+                         support = support, n = n, ...)
+    })
+    df           <- as.data.frame(do.call(rbind, res_list))
+    df           <- cbind(model = nms, df)
+    rownames(df) <- NULL
+    return(dplyr::as_tibble(df))
+  }
+
   # Build the shared KDE grid once; reused across all requested measures.
   x_range <- range(c(target, alternative))
   pad     <- diff(x_range) * 0.15
@@ -315,6 +366,47 @@ robustness.numeric <- function(target, alternative,
     }
 
   ), numeric(1L))[intersect(.measure_order, types)]
+}
+
+
+# ---- matrix method ----------------------------------------------------------
+
+#' @export
+#' @method robustness matrix
+robustness.matrix <- function(target, alternative,
+                               type        = c("ovl", "js", "kl", "np"),
+                               target_args = list(),
+                               alt_args    = list(),
+                               target_q    = NULL,
+                               support     = c(-Inf, Inf),
+                               n           = 512L,
+                               ...) {
+  types <- match.arg(type, several.ok = TRUE)
+
+  if (is.matrix(alternative)) {
+    # Column-wise pairing: target[,j] vs alternative[,j]
+    if (ncol(target) != ncol(alternative))
+      stop("`target` and `alternative` matrices must have the same number of columns.")
+    nms      <- if (!is.null(colnames(alternative))) colnames(alternative)
+                else paste0("M", seq_len(ncol(alternative)))
+    res_list <- lapply(seq_len(ncol(target)), function(j) {
+      robustness.numeric(target[, j], alternative[, j],
+                         type = types, support = support, n = n, ...)
+    })
+  } else {
+    # Each column of target vs the single alternative vector
+    nms      <- if (!is.null(colnames(target))) colnames(target)
+                else paste0("M", seq_len(ncol(target)))
+    res_list <- lapply(seq_len(ncol(target)), function(j) {
+      robustness.numeric(target[, j], alternative,
+                         type = types, support = support, n = n, ...)
+    })
+  }
+
+  df           <- as.data.frame(do.call(rbind, res_list))
+  df           <- cbind(model = nms, df)
+  rownames(df) <- NULL
+  dplyr::as_tibble(df)
 }
 
 

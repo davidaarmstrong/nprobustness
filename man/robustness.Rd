@@ -17,11 +17,16 @@ robustness(
 )
 }
 \arguments{
-\item{target}{The target (baseline) distribution: either a density function
-such as \code{dnorm}, or a numeric vector of posterior/bootstrap draws.}
+\item{target}{The target (baseline) distribution: a density function such as
+\code{dnorm}, a numeric vector of posterior/bootstrap draws, or a numeric
+\emph{matrix} of draws (columns are independent comparisons).}
 
-\item{alternative}{The alternative distribution: must match the class of
-\code{target} — both functions or both numeric vectors.}
+\item{alternative}{The alternative distribution.  For the function method
+must be the same density function as \code{target}.  For the numeric
+method may be a matrix even when \code{target} is a vector, in which case
+each column of \code{alternative} is compared to \code{target}.  For the
+matrix method, \code{alternative} may be a matrix (column-wise pairing)
+or a vector (each column of \code{target} vs the same vector).}
 
 \item{type}{Character string or vector of strings naming the measure(s) to
 compute.  Any combination of \code{"ovl"} (Overlap Coefficient),
@@ -34,7 +39,12 @@ density function (e.g. \code{list(mean = 1, sd = 0.3)} for \code{dnorm}).
 Ignored for the numeric method.}
 
 \item{alt_args}{Named list of parameters for \code{alternative} when it is
-a density function.  Ignored for the numeric method.}
+a density function (e.g. \code{list(mean = 1.5, sd = 0.5)}).  To
+evaluate multiple alternatives against a common target, supply a
+\emph{list of such lists}
+(e.g. \code{list(list(mean=1,sd=0.3), list(mean=2,sd=0.5))}); the result
+is then a tibble with one row per alternative.  Ignored for the numeric
+and matrix methods.}
 
 \item{target_q}{The quantile function corresponding to \code{target} (e.g.
 \code{qnorm} when \code{target = dnorm}).  Used only by the
@@ -69,11 +79,12 @@ to \code{stats::density()} (e.g. \code{bw}, \code{kernel}).  Unused for
 the function method.}
 }
 \value{
-A named numeric vector with one element per requested measure.
-  Regardless of the order supplied in \code{type}, results are always
-  returned in canonical order: similarity measures first
-  (\code{"ovl"}, \code{"np"}), then divergence measures
-  (\code{"js"}, \code{"kl"}).
+For a single target–alternative pair (the default), a named numeric
+  vector in canonical order: \code{"ovl"}, \code{"np"}, \code{"js"},
+  \code{"kl"}.  For vectorised calls — multiple \code{alt_args} lists
+  (function method) or a matrix \code{alternative} (numeric/matrix methods)
+  — a \link[tibble]{tibble} with a leading \code{model} column and one row
+  per alternative.
 }
 \description{
 Computes one or more measures comparing two distributions, dispatching on
