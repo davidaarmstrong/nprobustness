@@ -368,26 +368,28 @@ sim_models <- function(base_model, robust_models, orig_data, R=100,
   } else {
     .check_alias(robust_models, "Robust model")
   }
-  dats <- sim_data(base_model, orig_data, R=R, ...)
-  base_mods <- lapply(dats, \(d){
-    cl <- base_model$call
-    cl$data <- d
+  # Refit `model` on simulated datum `d`.  Handles survey designs: svyglm
+  # models expect a `design` argument; non-survey models expect `data`.  When
+  # the base model is a svyglm (so `d` is a design object) but the alternative
+  # is a plain lm/glm, extract the underlying data frame from the design.
+  .refit <- function(model, d) {
+    cl <- model$call
+    if (inherits(model, "svyglm")) {
+      cl[["design"]] <- d
+    } else if (inherits(d, "survey.design")) {
+      cl[["data"]] <- d$variables
+    } else {
+      cl[["data"]] <- d
+    }
     eval(cl)
-  })
+  }
+
+  dats <- sim_data(base_model, orig_data, R=R, ...)
+  base_mods <- lapply(dats, \(d) .refit(base_model, d))
   if(inherits(robust_models, "list")){
-    rob_mods <- lapply(robust_models, \(x){
-      lapply(dats, \(d){
-        cl <- x$call
-        cl$data <- d
-        eval(cl)
-      })
-    })
+    rob_mods <- lapply(robust_models, \(x) lapply(dats, \(d) .refit(x, d)))
   }else{
-    rob_mods <- lapply(dats, \(d){
-      cl <- robust_models$call
-      cl$data <- d
-      eval(cl)
-    })
+    rob_mods <- lapply(dats, \(d) .refit(robust_models, d))
   }
   res <- list(base = base_mods, robust=rob_mods)
   if(return_data){
@@ -487,6 +489,38 @@ sim_data.gam <- function(model, orig_data, R=100, ...) {
       stop("sim_data.gam supports gaussian, binomial, and poisson families only.")
     }
     cbind(d, dat[, setdiff(names(orig_data), names(d)), drop = FALSE])
+  })
+}
+
+#' @export
+#' @method sim_data svyglm
+#' @rdname sim_data
+#' @importFrom MASS mvrnorm
+sim_data.svyglm <- function(model, orig_data, R = 100, ...) {
+  R         <- as.integer(R)
+  design    <- model$survey.design
+  fam       <- family(model)$family
+  resp_name <- as.character(formula(model)[[2L]])
+  X         <- model.matrix(model)
+  b0        <- coef(model)
+  V         <- vcov(model)
+  disp_sd   <- sqrt(summary(model)$dispersion)
+
+  lapply(seq_len(R), function(i) {
+    b   <- MASS::mvrnorm(1, b0, V)
+    eta <- as.numeric(X %*% b)
+    new_design <- design
+    new_design$variables[[resp_name]] <- switch(
+      fam,
+      gaussian      = eta + rnorm(nrow(X), 0, disp_sd),
+      binomial      = ,
+      quasibinomial = rbinom(nrow(X), 1L, family(model)$linkinv(eta)),
+      poisson       = ,
+      quasipoisson  = rpois(nrow(X), family(model)$linkinv(eta)),
+      stop("sim_data.svyglm supports gaussian, binomial, quasibinomial, ",
+           "poisson, and quasipoisson families.")
+    )
+    new_design
   })
 }
 

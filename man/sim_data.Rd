@@ -5,6 +5,7 @@
 \alias{sim_data.lm}
 \alias{sim_data.glm}
 \alias{sim_data.gam}
+\alias{sim_data.svyglm}
 \title{Simulate data under the base model specification}
 \usage{
 sim_data(model, orig_data, R = 100, ...)
@@ -14,6 +15,8 @@ sim_data(model, orig_data, R = 100, ...)
 \method{sim_data}{glm}(model, orig_data, R = 100, ...)
 
 \method{sim_data}{gam}(model, orig_data, R = 100, ...)
+
+\method{sim_data}{svyglm}(model, orig_data, R = 100, ...)
 }
 \arguments{
 \item{model}{The baseline model for a robustness analysis.}
