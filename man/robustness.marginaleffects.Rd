@@ -13,6 +13,7 @@
   target_q = NULL,
   support = c(-Inf, Inf),
   n = 512L,
+  show_progress = FALSE,
   ...
 )
 }
@@ -30,6 +31,11 @@ alternative model effects.  Must have the same number of rows as
 
 \item{target_args, alt_args, target_q, support, n}{Unused; present only so the
 method signature matches the generic.}
+
+\item{show_progress}{Logical; show a progress bar for the per-row loop?
+Default \code{FALSE}.  Set to \code{TRUE} for interactive use with many
+rows; leave \code{FALSE} when called inside \code{\link{sim_robustness}}
+to avoid nested progress bars.}
 
 \item{...}{Unused.}
 }

@@ -18,6 +18,10 @@
 #'   \code{"kl"}, \code{"np"}.
 #' @param target_args,alt_args,target_q,support,n Unused; present only so the
 #'   method signature matches the generic.
+#' @param show_progress Logical; show a progress bar for the per-row loop?
+#'   Default \code{FALSE}.  Set to \code{TRUE} for interactive use with many
+#'   rows; leave \code{FALSE} when called inside \code{\link{sim_robustness}}
+#'   to avoid nested progress bars.
 #' @param ... Unused.
 #'
 #' @details
@@ -45,12 +49,13 @@
 #' @method robustness marginaleffects
 robustness.marginaleffects <- function(target, alternative,
 
-                                       type        = c("ovl", "js", "kl", "np"),
-                                       target_args = list(),
-                                       alt_args    = list(),
-                                       target_q    = NULL,
-                                       support     = c(-Inf, Inf),
-                                       n           = 512L,
+                                       type          = c("ovl", "js", "kl", "np"),
+                                       target_args   = list(),
+                                       alt_args      = list(),
+                                       target_q      = NULL,
+                                       support       = c(-Inf, Inf),
+                                       n             = 512L,
+                                       show_progress = FALSE,
                                        ...) {
   types <- match.arg(type, several.ok = TRUE)
 
@@ -71,7 +76,8 @@ robustness.marginaleffects <- function(target, alternative,
   types_fn <- setdiff(types, "np")
   do_np    <- "np" %in% types
 
-  measures <- do.call(rbind, pbapply::pblapply(seq_len(n_rows), function(i) {
+  appfun   <- if (show_progress) pbapply::pblapply else lapply
+  measures <- do.call(rbind, appfun(seq_len(n_rows), function(i) {
 
     est_t <- target$estimate[i]
     se_t  <- target$std.error[i]
