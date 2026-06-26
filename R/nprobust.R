@@ -353,28 +353,20 @@ sim_models <- function(base_model, robust_models, orig_data, R=100,
   if(!inherits(base_model, "lm") & !inherits(base_model, "glm")){
     stop("Model must be an lm or glm.\n")
   }
-  a <- alias(base_model)
-  if(!is.null(a$Complete)){
-    avars <- rownames(a$Complete)
-    stop(paste0("Base model contains aliased coefficients, please remove ", 
-                paste(avars, collapse=", "), "and re-estimate the model.\n"))
-  }
-  if(inherits(robust_models, "list")){
-    for(i in 1:length(robust_models)){
-      a <- alias(robust_models[[i]])
-      if(!is.null(a$Complete)){
-        avars <- rownames(a$Complete)
-        stop(paste0("Robust model ", i, " contains aliased coefficients, please remove ", 
-                    paste(avars, collapse=", "), "and re-estimate the model.\n"))
-      }
-    }
-  }else{
-    a <- alias(robust_models)
-    if(!is.null(a$Complete)){
+  .check_alias <- function(mod, label) {
+    a <- tryCatch(alias(mod), error = function(e) list(Complete = NULL))
+    if (!is.null(a$Complete)) {
       avars <- rownames(a$Complete)
-      stop(paste0("Robust model contains aliased coefficients, please remove ", 
-                  paste(avars, collapse=", "), "and re-estimate the model.\n"))
+      stop(paste0(label, " contains aliased coefficients, please remove ",
+                  paste(avars, collapse = ", "), " and re-estimate the model.\n"))
     }
+  }
+  .check_alias(base_model, "Base model")
+  if (inherits(robust_models, "list")) {
+    for (i in seq_along(robust_models))
+      .check_alias(robust_models[[i]], paste0("Robust model ", i))
+  } else {
+    .check_alias(robust_models, "Robust model")
   }
   dats <- sim_data(base_model, orig_data, R=R, ...)
   base_mods <- lapply(dats, \(d){
@@ -467,6 +459,34 @@ sim_data.glm <- function(model, orig_data, R=100, ...){
       d[[1]] <- rpois(nrow(X), ystar)
     }
     cbind(d, dat[, setdiff(names(orig_data), names(d))])
+  })
+}
+
+#' @export
+#' @method sim_data gam
+#' @rdname sim_data
+#' @importFrom MASS mvrnorm
+sim_data.gam <- function(model, orig_data, R=100, ...) {
+  R   <- as.integer(R)
+  fam <- family(model)$family
+  d   <- insight::get_data(model)
+  dat <- orig_data[complete.cases(d), ]
+  X   <- model.matrix(model)
+  b0  <- coef(model)
+  V   <- vcov(model)
+  lapply(seq_len(R), \(x) {
+    b   <- MASS::mvrnorm(1, b0, V)
+    eta <- as.numeric(X %*% b)
+    d[[1]] <- if (fam == "gaussian") {
+      eta + rnorm(nrow(X), 0, sqrt(model$sig2))
+    } else if (fam == "binomial") {
+      rbinom(nrow(X), 1, family(model)$linkinv(eta))
+    } else if (fam == "poisson") {
+      rpois(nrow(X), family(model)$linkinv(eta))
+    } else {
+      stop("sim_data.gam supports gaussian, binomial, and poisson families only.")
+    }
+    cbind(d, dat[, setdiff(names(orig_data), names(d)), drop = FALSE])
   })
 }
 
