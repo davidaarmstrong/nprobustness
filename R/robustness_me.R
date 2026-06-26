@@ -44,6 +44,7 @@
 #' @export
 #' @method robustness marginaleffects
 robustness.marginaleffects <- function(target, alternative,
+
                                        type        = c("ovl", "js", "kl", "np"),
                                        target_args = list(),
                                        alt_args    = list(),
@@ -110,3 +111,15 @@ robustness.marginaleffects <- function(target, alternative,
 
   dplyr::as_tibble(result)
 }
+
+# In marginaleffects >= 0.19, comparisons() and predictions() dropped
+# "marginaleffects" from their class vector, so robustness.marginaleffects
+# no longer dispatches for them.  These two aliases restore coverage.
+
+#' @export
+#' @method robustness comparisons
+robustness.comparisons <- robustness.marginaleffects
+
+#' @export
+#' @method robustness predictions
+robustness.predictions <- robustness.marginaleffects
