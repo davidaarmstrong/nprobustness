@@ -39,12 +39,12 @@ density function (e.g. \code{list(mean = 1, sd = 0.3)} for \code{dnorm}).
 Ignored for the numeric method.}
 
 \item{alt_args}{Named list of parameters for \code{alternative} when it is
-a density function (e.g. \code{list(mean = 1.5, sd = 0.5)}).  To
-evaluate multiple alternatives against a common target, supply a
-\emph{list of such lists}
-(e.g. \code{list(list(mean=1,sd=0.3), list(mean=2,sd=0.5))}); the result
-is then a tibble with one row per alternative.  Ignored for the numeric
-and matrix methods.}
+a density function (e.g. \code{list(mean = 1.5, sd = 0.5)} for
+\code{dnorm}).  To evaluate multiple alternatives against a common target,
+supply vectors for any parameter that varies across alternatives
+(e.g. \code{list(mean = c(1, 2, 3), sd = c(0.3, 0.5, 0.4))}); scalars
+are recycled across alternatives.  The result is then a tibble with one
+row per alternative.  Ignored for the numeric and matrix methods.}
 
 \item{target_q}{The quantile function corresponding to \code{target} (e.g.
 \code{qnorm} when \code{target = dnorm}).  Used only by the

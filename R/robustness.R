@@ -23,12 +23,12 @@
 #'   density function (e.g. \code{list(mean = 1, sd = 0.3)} for \code{dnorm}).
 #'   Ignored for the numeric method.
 #' @param alt_args Named list of parameters for \code{alternative} when it is
-#'   a density function (e.g. \code{list(mean = 1.5, sd = 0.5)}).  To
-#'   evaluate multiple alternatives against a common target, supply a
-#'   \emph{list of such lists}
-#'   (e.g. \code{list(list(mean=1,sd=0.3), list(mean=2,sd=0.5))}); the result
-#'   is then a tibble with one row per alternative.  Ignored for the numeric
-#'   and matrix methods.
+#'   a density function (e.g. \code{list(mean = 1.5, sd = 0.5)} for
+#'   \code{dnorm}).  To evaluate multiple alternatives against a common target,
+#'   supply vectors for any parameter that varies across alternatives
+#'   (e.g. \code{list(mean = c(1, 2, 3), sd = c(0.3, 0.5, 0.4))}); scalars
+#'   are recycled across alternatives.  The result is then a tibble with one
+#'   row per alternative.  Ignored for the numeric and matrix methods.
 #' @param target_q The quantile function corresponding to \code{target} (e.g.
 #'   \code{qnorm} when \code{target = dnorm}).  Used only by the
 #'   \strong{function} method with \code{"np"} in \code{type} to obtain the
@@ -175,19 +175,23 @@ robustness.function <- function(target, alternative,
     # Name does not start with "d" (custom density) — fall through silently.
   }
 
-  # --- Vectorised path: alt_args is a list of named lists ---
-  # Detected by checking whether the first element is itself a list.
-  # Single-alternative callers pass list(mean=..., sd=...) whose elements are
-  # scalars, not lists, so they fall through to the scalar path below.
-  if (is.list(alt_args) && length(alt_args) > 0L && is.list(alt_args[[1L]])) {
-    nms      <- if (!is.null(names(alt_args))) names(alt_args)
-                else paste0("M", seq_along(alt_args))
-    res_list <- lapply(alt_args, function(aa) {
+  # --- Vectorised path: any alt_args element is a vector of length > 1 ---
+  # API: list(mean = c(1, 2, 3), sd = c(0.3, 0.5, 0.4)).
+  # Scalars are recycled; names on the first multi-valued element become row
+  # labels; falls back to "M1", "M2", ... when unnamed.
+  if (is.list(alt_args) && length(alt_args) > 0L &&
+      max(lengths(alt_args)) > 1L) {
+    max_len   <- max(lengths(alt_args))
+    first_vec <- which(lengths(alt_args) == max_len)[1L]
+    nms       <- names(alt_args[[first_vec]])
+    if (is.null(nms)) nms <- paste0("M", seq_len(max_len))
+    res_list  <- lapply(seq_len(max_len), function(i) {
+      aa <- lapply(alt_args, function(v) if (length(v) == 1L) v else v[[i]])
       robustness(target, alternative,
                  type        = types,
                  target_args = target_args,
                  alt_args    = aa,
-                 target_q    = target_q,   # already resolved above
+                 target_q    = target_q,
                  support     = support,
                  n           = n, ...)
     })
