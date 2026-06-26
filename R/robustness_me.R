@@ -54,9 +54,19 @@ robustness.marginaleffects <- function(target, alternative,
                                        ...) {
   types <- match.arg(type, several.ok = TRUE)
 
-  n_rows <- nrow(target)
-  if (nrow(alternative) != n_rows)
-    stop("`target` and `alternative` must have the same number of rows.")
+  n_rows_t <- nrow(target)
+  n_rows_a <- nrow(alternative)
+
+  if (n_rows_t != n_rows_a && n_rows_t != 1L)
+    stop("`target` and `alternative` must have the same number of rows, or ",
+         "`target` may have exactly 1 row (recycled across all alternative rows). ",
+         "Got ", n_rows_t, " (target) and ", n_rows_a, " (alternative).")
+
+  # Recycle a single-row target across all alternative rows
+  if (n_rows_t == 1L && n_rows_a > 1L)
+    target <- target[rep(1L, n_rows_a), , drop = FALSE]
+
+  n_rows <- n_rows_a
 
   types_fn <- setdiff(types, "np")
   do_np    <- "np" %in% types

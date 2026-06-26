@@ -114,10 +114,10 @@ sim_robustness <- function(base_mod,
   act_list <- lapply(seq_len(n_alt), function(k) {
     b_me <- me_fn(base_mod)
     a_me <- alt_fns[[k]](alt_mods[[k]])
-    if (nrow(b_me) != nrow(a_me))
+    if (nrow(b_me) != nrow(a_me) && nrow(b_me) != 1L)
       stop("me_fn(base_mod) returned ", nrow(b_me), " row(s) but alt_me_fn ",
            "returned ", nrow(a_me), " row(s). Both functions must produce ",
-           "the same set of effects.")
+           "the same set of effects, or me_fn may return 1 row (recycled).")
     robustness(b_me, a_me, type = type)
   })
   actual <- if (n_alt == 1L) {
@@ -147,10 +147,11 @@ sim_robustness <- function(base_mod,
       a_me <- tryCatch(suppressWarnings(afn(alt_sims[[i]])),
                        error = function(e) NULL)
       if (is.null(b_me) || is.null(a_me)) return(NULL)
-      if (nrow(b_me) != nrow(a_me))
+      if (nrow(b_me) != nrow(a_me) && nrow(b_me) != 1L)
         stop("me_fn(base) returned ", nrow(b_me), " row(s) but alt_me_fn(alt) ",
              "returned ", nrow(a_me), " row(s) in simulation ", i,
-             ". Both functions must produce the same set of effects.")
+             ". Both functions must produce the same set of effects, ",
+             "or me_fn may return 1 row (recycled).")
       robustness(b_me, a_me, type = type)
     })
 
