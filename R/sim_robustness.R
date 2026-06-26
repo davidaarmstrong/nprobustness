@@ -164,5 +164,70 @@ sim_robustness <- function(base_mod,
     dplyr::bind_rows(stats::setNames(sim_list, alt_names), .id = "model")
   }
 
-  list(simulated = simulated, actual = actual)
+  result <- list(simulated = simulated, actual = actual)
+  attr(result, "type") <- type
+  class(result) <- c("sim_robustness", "list")
+  result
+}
+
+#' Summarise a sim_robustness Object
+#'
+#' For each measure requested in \code{\link{sim_robustness}}, computes the
+#' proportion of simulated robustness values that are greater than or equal to
+#' the observed value (an empirical p-value under the baseline specification),
+#' the mean of the simulated distribution, and the observed (actual) value.
+#'
+#' @param object A \code{sim_robustness} object returned by
+#'   \code{\link{sim_robustness}}.
+#' @param .by Character vector of column names to group by when summarising
+#'   (e.g. \code{c("term", "contrast")}).  These columns are also used as the
+#'   join key between the simulated and actual tibbles.  When \code{NULL}
+#'   (the default), no grouping is applied; this is valid only when
+#'   \code{object$actual} has a single row — an error is raised otherwise.
+#' @param ... Unused.
+#'
+#' @return A tibble with one row per group.  For each measure \code{m}
+#'   (e.g. \code{ovl}, \code{np}) three columns are produced:
+#'   \describe{
+#'     \item{\code{m_pct}}{Proportion of simulated values \eqn{\ge} the
+#'       observed value.}
+#'     \item{\code{m_mean_sim}}{Mean of the simulated distribution.}
+#'     \item{\code{m_obs}}{The observed value from the real data.}
+#'   }
+#'
+#' @seealso \code{\link{sim_robustness}}
+#'
+#' @importFrom dplyr across all_of cur_column left_join rename_with select summarise
+#' @export
+#' @method summary sim_robustness
+summary.sim_robustness <- function(object, .by = NULL, ...) {
+  types <- attr(object, "type")
+
+  if (is.null(.by) && nrow(object$actual) > 1L)
+    stop("`.by` is NULL but `object$actual` has ", nrow(object$actual),
+         " rows. Specify `.by` with the columns that identify each effect ",
+         "(e.g., `.by = \"term\"`).")
+
+  by_cols <- if (is.null(.by)) character(0) else .by
+
+  object$simulated |>
+    dplyr::select(dplyr::all_of(c("iter", .by, types))) |>
+    dplyr::left_join(
+      object$actual |>
+        dplyr::select(dplyr::all_of(c(.by, types))) |>
+        dplyr::rename_with(\(x) paste0(x, "_obs"), dplyr::all_of(types)),
+      by = by_cols
+    ) |>
+    dplyr::summarise(
+      dplyr::across(
+        dplyr::all_of(types),
+        list(
+          pct      = \(x) mean(get(paste0(dplyr::cur_column(), "_obs")) >= x, na.rm = TRUE),
+          mean_sim = \(x) mean(x, na.rm = TRUE),
+          obs      = \(x) mean(get(paste0(dplyr::cur_column(), "_obs")), na.rm = TRUE)
+        ),
+        .names = "{.col}_{.fn}"
+      ),
+      .by = .by
+    )
 }
